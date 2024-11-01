@@ -4,7 +4,7 @@ const verifyToken = require("../middleware/verifyToken");
 const app = express();
 
 function checkUser(req, res, next) {
-  if (req.path.toLowerCase() === "/api/auth/signup" || "/api/auth/signin") {
+  if (req.path.toLowerCase() === "/api/auth/signup" || req.path.toLowerCase() === "/api/auth/signin"){
     return next();
   }
 

@@ -23,9 +23,8 @@ async function userExists(email, password) {
 
 module.exports = {
   async signup(req, res) {
-    const email = req.body.email;
-    const password = req.body.password;
-    const name = req.body.firstName + req.body.lastName;
+    const { email, password, firstName, lastName, role } = req.body;
+    const name = firstName + " " + lastName;
 
     async function verified_answer() {
       return new Promise((resolve, reject) => {
@@ -54,23 +53,16 @@ module.exports = {
         name: name,
         email: email,
         password: password,
+        role: role,
       });
 
       try {
         await user.save();
         const tokenPayload = {
-          user_id: user._id,
           email: user.email,
         };
-    
-        var token = jwt.sign(tokenPayload, jwtPassword, { expiresIn: "6h" });
-        console.log("token genrated");
-
-        res
-        .cookie("jwt", token, { httpOnly: true, maxAge: 21600000, sameSite: 'Strict' });
-        console.log("cookie sent");
-        return res.json({
-          msg: "Login Successful",
+        res.json({
+          msg: "Signup Successful",
           user: tokenPayload,
         });
       } catch (err) {
@@ -106,14 +98,14 @@ module.exports = {
     var token = jwt.sign(tokenPayload, jwtPassword, { expiresIn: "6h" });
     console.log("token genrated");
 
-    res
-    .status(202)
-    .cookie("jwt", token, { httpOnly: true, maxAge: 21600000, sameSite: 'Strict' });
-    console.log("cookie sent");
-    return res.json({
+    res.status(202)
+    res.json({
       msg: "Login Successful",
+      token: token,
       user: tokenPayload,
     });
+    console.log("cookie sent");
+    
   },
 
   async getUsers(req, res) {

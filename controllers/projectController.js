@@ -10,25 +10,82 @@ AWS.config.update({
 const s3 = new AWS.S3();
 
 class ProjectController {
+  //CReating a project and storing the linked s3 url in db
   static async createProject(req, res) {
     try {
-      const { title, description } = req.body;
-      const youtuber = req.user.id; // Accessing user id from the decoded token
+      const { title, description, videoTitle } = req.body;
+      
+      // Authentication check
+      if (!req.user) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+      
+      const youtuber = req.user.user_id;
+      
+      // File validation
+      if (!req.file) {
+        return res.status(400).json({ error: 'No video file provided' });
+      }
 
+      // Validate file size
+      if (req.file.size > 100 * 1024 * 1024) { // 100MB
+        return res.status(400).json({ error: 'File size exceeds limit (100MB)' });
+      }
+
+      const videoBuffer = req.file.buffer;
+      const fileName = `${Date.now()}-${req.file.originalname}`;
+
+      // Upload to S3
+      const putObjectParams = {
+        Bucket: process.env.BUCKET_NAME,
+        Key: fileName,
+        Body: videoBuffer,
+        ContentType: req.file.mimetype
+      };
+
+      const putObjectResult = await s3.putObject(putObjectParams).promise();
+      const s3Url = `https://${process.env.BUCKET_NAME}.s3.${process.env.BUCKET_REGION}.amazonaws.com/${fileName}`;
+
+      // Generate project_id
+
+      // Create project
       const project = new Project({
         title,
         description,
-        youtuber
+        youtuber,
+        rawVideos: [{
+          title: videoTitle,
+          s3Key: fileName,
+          s3Url,
+          isRaw: true,
+          uploadedBy: youtuber
+        }]
       });
 
       await project.save();
-      res.status(201).json({ message: 'Project created successfully', project });
+      
+      res.status(201).json({ 
+        message: 'Project created successfully with uploaded video', 
+        project,
+        s3ETag: putObjectResult.ETag
+      });
+
     } catch (error) {
       console.error('Error creating project:', error);
+      
+      // More specific error handling
+      if (error.code === 'NetworkingError') {
+        return res.status(500).json({ error: 'Failed to upload to S3. Please try again.' });
+      }
+      
+      if (error.name === 'ValidationError') {
+        return res.status(400).json({ error: 'Invalid project data' });
+      }
+      
       res.status(500).json({ error: 'Failed to create project' });
     }
   }
-
+  //This will be used after application is successfull and youtuber assigns this editor 
   static async assignVideoEditor(req, res) {
     try {
       const { projectId, videoEditorId } = req.body;
