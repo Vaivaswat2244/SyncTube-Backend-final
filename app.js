@@ -4,7 +4,9 @@ const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
 const authRoutes = require("./routes/authRoute");
 const userDetailsRoutes = require("./routes/userRoute");
-const projectRoutes = require("./routes/projectRoute")
+const projectRoutes = require("./routes/projectRoute");
+const applicationRoutes = require("./routes/applicationRoute");
+const userRoute = require("./routes/userRoute");
 const connectDB = require("./database/db");
 const checkUser = require("./middleware/checkUser");
 const cors = require("cors");
@@ -20,6 +22,8 @@ app.use(cors({credentials: true, origin:"http://localhost:3000"}));
 app.use("/api/auth", authRoutes);
 app.use("/api/users/", userDetailsRoutes);
 app.use("/api/project/", projectRoutes);
+app.use('/api/application/', applicationRoutes);
+app.use("/api/profile", userRoute);
 
 app.get('/',(req,res)=>{
   res.send("Hello There")

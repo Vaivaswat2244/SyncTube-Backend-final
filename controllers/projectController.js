@@ -1,82 +1,89 @@
 const AWS = require('aws-sdk');
 const Project = require('../models/project');
+const { S3Client } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const mongoose = require('mongoose');
 
-AWS.config.update({
-  accessKeyId: process.env.ACCESS_KEY,
-  secretAccessKey: process.env.SECRET_ACCESS_KEY,
-  region: process.env.BUCKET_REGION
+const s3Client = new S3Client({
+  region: process.env.BUCKET_REGION,
+  credentials: {
+    accessKeyId: process.env.ACCESS_KEY,
+    secretAccessKey: process.env.SECRET_ACCESS_KEY
+  }
 });
 
 const s3 = new AWS.S3();
 
 class ProjectController {
-  //CReating a project and storing the linked s3 url in db
   static async createProject(req, res) {
     try {
-      const { title, description, videoTitle } = req.body;
+      const { title, description, specifications } = req.body;
       
-      // Authentication check
       if (!req.user) {
         return res.status(401).json({ error: 'User not authenticated' });
       }
       
-      const youtuber = req.user.user_id;
+      const youtuber = req.user.email;
       
-      // File validation
       if (!req.file) {
         return res.status(400).json({ error: 'No video file provided' });
       }
-
-      // Validate file size
-      if (req.file.size > 100 * 1024 * 1024) { // 100MB
+      if (req.file.size > 100 * 1024 * 1024) {
         return res.status(400).json({ error: 'File size exceeds limit (100MB)' });
       }
 
       const videoBuffer = req.file.buffer;
       const fileName = `${Date.now()}-${req.file.originalname}`;
 
-      // Upload to S3
-      const putObjectParams = {
+      // Upload command
+      const putCommand = new PutObjectCommand({
         Bucket: process.env.BUCKET_NAME,
         Key: fileName,
         Body: videoBuffer,
         ContentType: req.file.mimetype
+      });
+      
+      // Upload the file
+      await s3Client.send(putCommand);
+
+      // Create a GetObject command for generating signed URL
+      const getCommand = new GetObjectCommand({
+        Bucket: process.env.BUCKET_NAME,
+        Key: fileName,
+      });
+
+      // Generate signed URL that expires in 1 hour
+      const signedUrl = await getSignedUrl(s3Client, getCommand, { 
+        expiresIn: 360000 
+      });
+
+      const video = {
+        video_id: new mongoose.Types.ObjectId().toString(),
+        title: fileName,
+        s3Key: fileName,
+        s3Url: signedUrl,
+        isRaw: true,
+        uploadedBy: youtuber
       };
-
-      const putObjectResult = await s3.putObject(putObjectParams).promise();
-      const s3Url = `https://${process.env.BUCKET_NAME}.s3.${process.env.BUCKET_REGION}.amazonaws.com/${fileName}`;
-
-      // Generate project_id
-
-      // Create project
+      
       const project = new Project({
+        project_id: new mongoose.Types.ObjectId().toString(),
+        specifications,
         title,
         description,
         youtuber,
-        rawVideos: [{
-          title: videoTitle,
-          s3Key: fileName,
-          s3Url,
-          isRaw: true,
-          uploadedBy: youtuber
-        }]
+        rawVideos: [video]
       });
-
+      
       await project.save();
       
       res.status(201).json({ 
         message: 'Project created successfully with uploaded video', 
-        project,
-        s3ETag: putObjectResult.ETag
+        project
       });
-
     } catch (error) {
       console.error('Error creating project:', error);
-      
-      // More specific error handling
-      if (error.code === 'NetworkingError') {
-        return res.status(500).json({ error: 'Failed to upload to S3. Please try again.' });
-      }
       
       if (error.name === 'ValidationError') {
         return res.status(400).json({ error: 'Invalid project data' });
@@ -84,7 +91,180 @@ class ProjectController {
       
       res.status(500).json({ error: 'Failed to create project' });
     }
+}
+
+static async getYoutuberProjects(req, res) {
+  try {
+    const { email: youtuber } = req.user;
+    const projects = await Project.find({ youtuber });
+    res.status(200).json(projects);
+  } catch (error) {
+    console.error('Error getting YouTuber projects:', error);
+    res.status(500).json({ error: 'Failed to fetch projects' });
   }
+}
+
+static async getProjectById(req, res) {
+  try {
+    // Check if user is authenticated
+    if (!req.user) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    const { projectId } = req.params;
+    
+    // Find the project
+    const project = await Project.findOne({ project_id: projectId });
+    
+    // If project doesn't exist
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Check if user has access to this project (either as youtuber or videoEditor)
+    
+
+    // Generate fresh signed URLs for all videos if they exist
+    if (project.rawVideos && project.rawVideos.length > 0) {
+      for (let video of project.rawVideos) {
+        const getCommand = new GetObjectCommand({
+          Bucket: process.env.BUCKET_NAME,
+          Key: video.s3Key,
+        });
+        
+        video.s3Url = await getSignedUrl(s3Client, getCommand, { 
+          expiresIn: 360000 // 1 hour
+        });
+      }
+    }
+
+    if (project.editedVideos && project.editedVideos.length > 0) {
+      for (let video of project.editedVideos) {
+        const getCommand = new GetObjectCommand({
+          Bucket: process.env.BUCKET_NAME,
+          Key: video.s3Key,
+        });
+        
+        video.s3Url = await getSignedUrl(s3Client, getCommand, { 
+          expiresIn: 360000 // 1 hour
+        });
+      }
+    }
+
+    res.status(200).json(project);
+  } catch (error) {
+    console.error('Error fetching project:', error);
+    res.status(500).json({ error: 'Failed to fetch project' });
+  }
+}
+
+static async getAllProjects(req, res) {
+  try {
+    const projects = await Project.find({});
+    
+    if (!projects || projects.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No projects found'
+      });
+    }
+
+    return res.status(200).json({
+      projects
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching projects',
+      error: error.message
+    });
+  }
+}
+
+static async uploadEditedVideo(req, res) {
+  try {
+      // Check authentication
+      if (!req.user) {
+          return res.status(401).json({ error: 'User not authenticated' });
+      }
+
+      const { projectId } = req.params;
+      const editor = req.user.email;
+
+      // Find the project and verify editor permission
+      const project = await Project.findOne({ project_id: projectId });
+      
+      if (!project) {
+          return res.status(404).json({ error: 'Project not found' });
+      }
+
+      // Check if the user is the assigned editor
+      if (project.videoEditor !== editor) {
+          return res.status(403).json({ error: 'You are not authorized to upload videos to this project' });
+      }
+
+      // Validate file upload
+      if (!req.file) {
+          return res.status(400).json({ error: 'No video file provided' });
+      }
+      if (req.file.size > 100 * 1024 * 1024) {
+          return res.status(400).json({ error: 'File size exceeds limit (100MB)' });
+      }
+
+      const videoBuffer = req.file.buffer;
+      const fileName = `edited-${Date.now()}-${req.file.originalname}`;
+
+      // Upload to S3
+      const putCommand = new PutObjectCommand({
+          Bucket: process.env.BUCKET_NAME,
+          Key: fileName,
+          Body: videoBuffer,
+          ContentType: req.file.mimetype
+      });
+      
+      await s3Client.send(putCommand);
+
+      // Generate signed URL
+      const getCommand = new GetObjectCommand({
+          Bucket: process.env.BUCKET_NAME,
+          Key: fileName,
+      });
+
+      const signedUrl = await getSignedUrl(s3Client, getCommand, { 
+          expiresIn: 360000 
+      });
+
+      // Create video object
+      const video = {
+          video_id: new mongoose.Types.ObjectId().toString(),
+          title: fileName,
+          s3Key: fileName,
+          s3Url: signedUrl,
+          isRaw: false,  // This is an edited video
+          uploadedBy: editor
+      };
+
+      // Add video to project's editedVideos array
+      project.editedVideos.push(video);
+      
+      // If this is the first edited video, update project status to 'review'
+      if (project.editedVideos.length === 1) {
+          project.status = 'review';
+      }
+
+      await project.save();
+
+      res.status(200).json({
+          message: 'Edited video uploaded successfully',
+          video
+      });
+
+  } catch (error) {
+      console.error('Error uploading edited video:', error);
+      res.status(500).json({ error: 'Failed to upload edited video' });
+  }
+}
   //This will be used after application is successfull and youtuber assigns this editor 
   static async assignVideoEditor(req, res) {
     try {

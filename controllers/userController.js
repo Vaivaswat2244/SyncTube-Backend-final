@@ -33,7 +33,6 @@ module.exports = {
             console.log(err);
             reject(err);
           } else {
-            console.log(info.success);
             resolve(info.success);
           }
         });
@@ -129,4 +128,5 @@ module.exports = {
       });
     }
   },
+
 };

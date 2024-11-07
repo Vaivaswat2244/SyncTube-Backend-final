@@ -3,18 +3,13 @@ const mongoose = require("mongoose");
 const ApplicationSchema = new mongoose.Schema({
     project_id: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Project',
-        required: true
+        ref: 'Project'
     },
-    editor_id: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
+    editor: {
+        type: String
     },
-    youtuber_id: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
+    youtuber: {
+        type: String
     },
     status: {
         type: String,

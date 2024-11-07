@@ -11,14 +11,19 @@ const UserSchema = new mongoose.Schema(
     role: { type: String, enum: ["editor", "youtuber"] },
     youtuber_desc: String,
     channelName: String,
-    youtuber_Image: String,
-    project_id: String,
+    youtuber_Image: {
+      data: Buffer,
+      contentType: String
+  },
 
+    editor_desc: String,
     past_xp: String,
-    editor_Desc: String,
     portfolio_link: String,
-    resume: String,
-    editor_Image: String,
+    resume_link: String,
+    editor_Image: {
+      data: Buffer,
+      contentType: String
+  }
   },
   {
     collection: "UserInfo",
