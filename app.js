@@ -18,6 +18,7 @@ app.use(bodyParser.json());
 app.use(cookieParser());
 // app.use(checkUser);
 app.use(cors({credentials: true, origin:"http://localhost:3000"}));
+app.use(cors({credentials: true, origin:"https://synctube.vercel.app"}))
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users/", userDetailsRoutes);
