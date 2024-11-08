@@ -10,6 +10,7 @@ const userRoute = require("./routes/userRoute");
 const connectDB = require("./database/db");
 const checkUser = require("./middleware/checkUser");
 const cors = require("cors");
+const allowedOrigins = ["http://localhost:3000", "https://synctube.vercel.app"];
 
 connectDB();
 
@@ -17,8 +18,17 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cookieParser());
 // app.use(checkUser);
-app.use(cors({credentials: true, origin:"http://localhost:3000"}));
-app.use(cors({credentials: true, origin:"https://synctube.vercel.app"}))
+app.use(cors({
+  credentials: true,
+  origin: function (origin, callback) {
+    if (allowedOrigins.includes(origin) || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  }
+}));
+
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users/", userDetailsRoutes);
