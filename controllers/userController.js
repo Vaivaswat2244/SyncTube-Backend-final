@@ -23,7 +23,7 @@ async function userExists(email, password) {
 
 module.exports = {
   async signup(req, res) {
-    const { email, password, firstName, lastName, role } = req.body;
+    const { email, password, firstName, lastName, accountType } = req.body;
     const name = firstName + " " + lastName;
 
     async function verified_answer() {
@@ -52,7 +52,7 @@ module.exports = {
         name: name,
         email: email,
         password: password,
-        role: role,
+        role: accountType,
       });
 
       try {
