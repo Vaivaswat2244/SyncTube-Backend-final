@@ -39,9 +39,9 @@ module.exports = {
       });
     }
 
-    const isEmailValid = await verified_answer();
+    // const isEmailValid = await verified_answer();
 
-    if (isEmailValid) {
+    
       const existingUser = await User.findOne({ email: email });
 
       if (existingUser) {
@@ -68,11 +68,7 @@ module.exports = {
         console.error(err);
         res.status(500).send("Server error");
       }
-    } else {
-      return res
-        .status(400)
-        .send("Invalid Email Address, Please enter a valid email address.");
-    }
+    
   }
   ,
 
